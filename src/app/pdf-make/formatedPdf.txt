@@ -1,0 +1,88 @@
+generatePDF(products: { barcode: string; companyName: string; productName: string; mrp: number; saleRate: number, expDate?: string }[]) {
+  const cellWidth = 106;  // Fixed width of each cell
+  const cellHeight = 131; // Fixed height of each cell
+  const barcodesPerPage = 5 * 6; // 30 barcodes per A4 page
+
+  if (!products || products.length === 0) {
+    console.error('No product data provided for PDF generation.');
+    return;
+  }
+
+  // Generate barcode images
+  const barcodeImages: string[] = [];
+  products.forEach((product) => {
+    const canvas = document.createElement("canvas");
+    JsBarcode(canvas, product.barcode, { format: "CODE128", width: 2, height: 50 });
+    barcodeImages.push(canvas.toDataURL("image/png")); // Convert to base64
+  });
+
+  // Generate pages dynamically
+  const pages = [];
+  for (let i = 0; i < products.length; i += barcodesPerPage) {
+    const pageBarcodes = products.slice(i, i + barcodesPerPage);
+    const body = [];
+
+    for (let row = 0; row < 6; row++) {
+      const rowCells = [];
+      for (let col = 0; col < 5; col++) {
+        const index = row * 5 + col;
+        if (index < pageBarcodes.length) {
+          rowCells.push({
+            stack: [
+              { text: this.truncateText(pageBarcodes[index].companyName, 18), fontSize: 10, alignment: 'center', margin: [0, 2] },
+              { image: barcodeImages[i + index], fit: [cellWidth - 10, 50], alignment: 'center' },
+              { text: this.truncateText(pageBarcodes[index].productName, 35), fontSize: 10, alignment: 'start', margin: [0, 2] },
+              { text: `Exp Date: ${pageBarcodes[index].expDate ? this.formatDate(pageBarcodes[index].expDate) : "N/A"}`, fontSize: 10, alignment: 'start', margin: [0, 2] },
+              { text: `Rate: ₹${pageBarcodes[index].saleRate.toFixed(2)}`, fontSize: 10, alignment: 'start', margin: [0, 2] },
+              { text: `MRP: ₹${pageBarcodes[index].mrp.toFixed(2)}`, fontSize: 10, alignment: 'start', margin: [0, 2] }
+            ],
+            border: [true, true, true, true],
+            height: cellHeight, // Fix cell height
+          });
+        } else {
+          rowCells.push({ text: '', border: [true, true, true, true], height: cellHeight });
+        }
+      }
+      body.push(rowCells);
+    }
+
+    pages.push({
+      table: {
+        widths: Array(5).fill(cellWidth),
+        heights: Array(6).fill(cellHeight), // Fix row heights
+        body: body
+      },
+      layout: {
+        defaultBorder: true,
+      },
+      pageBreak: i + barcodesPerPage < products.length ? 'after' : ''
+    });
+  }
+
+  // PDF Document Definition
+  const docDefinition: any = {
+    pageSize: 'A4',
+    pageMargins: [10, 10, 10, 10], // Small margins
+    content: pages
+  };
+
+  pdfMake.createPdf(docDefinition).open(); // Open in a new tab
+}
+
+// Function to format date
+private formatDate(date: any): string {
+  if (!date) return 'N/A';
+  const parsedDate = new Date(date);
+  if (isNaN(parsedDate.getTime())) return 'Invalid Date';
+
+  const day = String(parsedDate.getDate()).padStart(2, '0');
+  const month = String(parsedDate.getMonth() + 1).padStart(2, '0'); // Month is zero-based
+  const year = parsedDate.getFullYear();
+
+  return `${day}-${month}-${year}`;
+}
+
+// Function to truncate long text
+truncateText(text: string, maxLength: number): string {
+  return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+}
